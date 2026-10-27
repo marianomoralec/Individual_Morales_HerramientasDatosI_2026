@@ -28,3 +28,14 @@ Se utiliza estadística descriptiva, regresión lineal con interacción entre se
 También se realiza un análisis de sensibilidad excluyendo las defunciones de menores de un año.
 
 
+
+## Cómo ejecutar el proyecto
+
+1. Descargar o clonar este repositorio.
+2. Abrir el archivo `Individual_Morales_HerramientasDatosI_2026.Rproj` en RStudio.
+3. Verificar que estén instalados los paquetes de R utilizados en el análisis.
+4. Abrir `cod/IndividualNano.qmd`.
+5. Presionar `Render` para ejecutar el análisis y generar el PDF.
+6. Consultar el reporte final en `res/IndividualNano.pdf`.
+
+La base de datos se encuentra en `data/` y se utiliza una ruta relativa para acceder a ella. Cuando se genere una nueva versión del PDF, se debe copiar desde `cod/` hacia `res/`.
