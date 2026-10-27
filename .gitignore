@@ -1,0 +1,18 @@
+# R / RStudio
+.Rhistory
+.RData
+.Rproj.user/
+
+# Datos confidenciales
+data/confidencial/
+*.xlsx
+
+# Credenciales
+config/credenciales.yml
+.Renviron
+
+# Archivos temporales de Quarto
+.quarto/
+*_files/
+
+
