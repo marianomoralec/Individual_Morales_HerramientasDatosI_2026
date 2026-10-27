@@ -1,0 +1,367 @@
+---
+title: "Evolución de la brecha en la edad de defunción entre hombres y mujeres en Costa Rica, 2005-2024"
+subtitle: "Herramientas de Ciencia de Datos 1"
+
+author:
+  - name: |
+      Mariano Morales Carvajal C5H565\
+      Universidad de Costa Rica, Escuela de Matemática, Departamento de Ciencias Actuariales\
+      Ciudad Universitaria Rodrigo Facio, San Pedro de Montes de Oca, San José, Costa Rica\
+      Profesor: Luis Alberto Juárez Potoy\
+      17 de octubre de 2026
+
+lang: es
+
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 2.2cm
+      y: 2cm
+    fontsize: 12pt
+    mainfont: "Times New Roman"
+    number-sections: true
+    toc: false
+    fig-format: png
+    fig-dpi: 200
+    include-in-header:
+      - text: |
+          #set par(justify: true, leading: 0.55em, spacing: 1.0em)
+          #set text(hyphenate: true)
+          #show heading: set block(above: 0.9em, below: 0.5em)
+          #show heading: set text(fill: rgb("#1F4E79"))
+          #show link: set text(fill: rgb("#1F4E79"))
+          #show figure.caption: set text(style: "italic")
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+library(tidyverse)
+library(haven)
+library(tinytable)
+
+#Para ser uniforme con los colores en los graficos, los guardo aca de una vez
+azul.hombre <- "#1F4E79"
+naranja.mujer <- "#C55A11"
+#Importo los datos del archivo .sav que me proporciono el INEC
+ruta <- "../data/Defunciones 2005-2024 (1).sav"
+
+# Estilo único para todas las tablas del reporte
+generadora.tablas <- function(x, nota=NULL) {
+  tt(x, notes=nota, escape=TRUE, theme="striped") |>
+    style_tt(i=0, bold=TRUE, color="white", background=azul.hombre) |>
+    style_tt(j=1, bold=TRUE)
+}
+```
+
+```{r}
+#| label: lectura
+#| include: false
+#Ahora sí hago la lectura de los datos con la ruta que definí antes
+datos <- read_sav(ruta)
+```
+
+```{r}
+#| label: diagnostico
+#| include: false
+diagnostico <- datos |>
+  summarise(
+    "Registros totales"=n(),
+    "Defunciones anteriores a 2005"=sum(anodef<2005),
+    "Edad ignorada (código 999)"=sum(edads==999),
+    "Sexo distinto de 1 o 2"=sum(!sexo %in% c(1, 2))
+  ) |>
+  pivot_longer(everything(), names_to="Concepto", values_to="Registros")
+```
+
+```{r}
+#| label: limpieza
+#| include: false
+d <- datos |>
+  filter(anodef>=2005) |>
+  mutate(edads=na_if(edads, 999)) |>
+  filter(!is.na(edads), sexo %in% c(1, 2)) |>
+  #A diferencia del mutate(), uso transmute() ya que crea o modifica columnas pero elimina las que no selecciono
+  transmute(
+    ano=as.integer(anodef),
+    sexo=factor(sexo, levels=c(1, 2), labels=c("Hombre", "Mujer")),
+    edad=edads,
+    prematura=edad<65,
+    causa=as_factor(grgruposcb) |> as.character() |>
+            str_remove("^\\d+- ") |> str_trunc(40),
+    periodo=case_when(
+      anodef<=2009~"2005-2009",
+      anodef >= 2020~"2020-2024",
+      .default=NA_character_)
+  )
+
+#Cantidades que se citan en el texto del reporte
+fmt <- function(x) format(x, big.mark=" ", scientific=FALSE)
+n_total <- diagnostico$Registros[1]
+n_ant   <- diagnostico$Registros[2]
+n_ign   <- diagnostico$Registros[3]
+n_sexo  <- diagnostico$Registros[4]
+n_final <- nrow(d)
+```
+
+# Introducción
+
+La edad de defunción difiere entre hombres y mujeres en Costa Rica, y entender cómo ha cambiado esa diferencia es importante desde el punto de vista actuarial. La brecha entre ambos sexos tiene implicaciones en áreas como los seguros de vida, los sistemas de pensiones y los riesgos que conlleva la longevidad. Además, comprender cómo evoluciona permite identificar patrones de mortalidad que pueden servir como punto de partida para realizar proyecciones actuariales y evaluar riesgos futuros.
+
+En este reporte se busca contestar la pregunta de investigación: **¿Cómo evolucionó la brecha en la edad de defunción entre hombres y mujeres en Costa Rica durante el período 2005-2024?** Para responderla se utilizan los registros oficiales de defunciones del Instituto Nacional de Estadística y Censos (INEC). Se entiende por brecha la diferencia entre la edad de defunción de las mujeres y la de los hombres, que se calcula restando el valor de los hombres al de las mujeres. En los análisis descriptivos se utiliza la edad mediana y en la regresión lineal (que constituye el análisis principal) la edad promedio.
+
+# Objetivos
+
+**Objetivo general:** Analizar la evolución de la brecha en la edad de defunción entre hombres y mujeres en Costa Rica durante el período 2005-2024.
+
+**Objetivos específicos:**
+
+1.  Describir la distribución de las edades de defunción por sexo, las diferencias entre sexos según las principales causas de defunción y la evolución de la brecha en la edad mediana.
+2.  Estimar, mediante una regresión lineal con interacción entre sexo y año, la brecha en 2005 y su cambio hasta 2024.
+3.  Evaluar si el resultado de la regresión es sensible a la inclusión de las defunciones de menores de un año.
+
+# Datos
+
+Los datos corresponden al registro oficial de defunciones del INEC (Instituto Nacional de Estadística y Censos \[INEC\], s. f.-b), obtenido mediante solicitud directa a las oficinas centrales de la institución en un archivo en formato .sav. La documentación metodológica puede consultarse en el catálogo de microdatos del INEC (INEC, s. f.-a). El período de estudio es 2005-2024 y las variables principales son el año de defunción, el sexo, la edad de defunción (registrada en años enteros) y el grupo de causa de defunción.
+
+El archivo contiene 444731 registros. Con base en la documentación metodológica se identificaron tres posibles complicaciones: defunciones anteriores a 2005 (960 registros), edad ignorada, registrada con el código 999 (478 registros), y sexo distinto de hombre o mujer (0 registros). Los registros de los dos primeros casos se excluyeron porque la edad es la variable central de la investigación, el horizonte temporal estaba delimitado y representan un porcentaje mínimo del total (aproximadamente 0.32 %). Imputarlos podría alterar los resultados, por lo que se optó por excluirlos. Después de la limpieza quedaron 442938 registros para el análisis.
+
+# Metodología
+
+Para comparar las edades de defunción por sexo se utiliza estadística descriptiva. Se calcula la edad mediana por sexo y año, y la brecha como la diferencia entre ambas medianas. Además, se construye una pirámide de defunciones por grupo de edad y sexo para los períodos 2005-2009 y 2020-2024, y se compara la edad mediana de hombres y mujeres dentro de las ocho causas de defunción más frecuentes, excluyendo embarazo y parto. La mediana divide las edades ordenadas en dos mitades y es menos sensible a valores extremos que el promedio. Los gráficos se elaboraron con ggplot2 (Wickham, 2016).
+
+El análisis principal es una regresión lineal de la edad promedio de defunción con interacción entre el sexo y los años transcurridos desde 2005, ajustada con la función lm() (R Core Team, 2026b). El modelo usa una recta para cada sexo, donde la edad promedio es igual al punto de partida más el ritmo de cambio por año multiplicado por los años desde 2005. Sus cuatro coeficientes son: el punto de partida de los hombres, la brecha en 2005, el ritmo anual de los hombres y el cambio anual de la brecha. Si este último es positivo, la brecha crece, y si es 0, la brecha no cambia. El cambio acumulado entre 2005 y 2024 se calcula multiplicando el cambio anual por los 19 años del período, y las rectas estimadas se obtienen con predict() (R Core Team, 2026c) y se comparan con los promedios observados.
+
+Los coeficientes son estimaciones, por lo que se acompañan de intervalos de confianza del 95 %, calculados con confint() (R Core Team, 2026a). Si un intervalo incluye el cero, no hay evidencia estadística suficiente para asegurar que existe un cambio o una diferencia real (Pennsylvania State University, s. f.). Como las defunciones a edades tempranas, en especial las de bebés, pueden reducir considerablemente el promedio, el modelo se repite excluyendo a los menores de un año para evaluar la sensibilidad del resultado. Es importante distinguir que los análisis descriptivos utilizan la edad mediana, mientras que la regresión estima la edad promedio, por lo que sus valores no son directamente comparables.
+
+# Resultados
+
+## Análisis exploratorio de datos
+
+```{r}
+#| label: fig-piramide
+#| fig-cap: "Defunciones por grupo de edad y sexo, primer y último quinquenio"
+#| fig-width: 6.6
+#| fig-height: 3.4
+piramide <- d |>
+  filter(!is.na(periodo)) |>
+  mutate(grupo=cut(edad, c(seq(0, 100, 5), Inf), right=FALSE)) |>
+  count(periodo, grupo, sexo) |>
+  mutate(n=if_else(sexo=="Hombre", -n, n))
+
+ggplot(piramide, aes(grupo, n, fill=sexo)) +
+  geom_col()+
+  coord_flip()+
+  scale_y_continuous(labels=abs) +
+  scale_fill_manual(values=c(Hombre=azul.hombre, Mujer=naranja.mujer)) +
+  facet_wrap(~periodo) +
+  labs(x = "Grupo de edad", y="Defunciones", fill=NULL) +
+  theme_minimal(base_size=11)
+```
+
+La figura 1 muestra que entre los 20 y los 65 años se registraron más defunciones de hombres que de mujeres. También se aprecia una mayor cantidad de defunciones a edades avanzadas durante el período 2020-2024 en comparación con 2005-2009. Sin embargo, estas diferencias deben analizarse con cuidado, ya que se comparan cantidades de defunciones y no tasas de mortalidad.
+
+```{r}
+#| label: fig-causa
+#| fig-cap: "Edad mediana al morir por sexo y causa, 2005-2024"
+#| fig-width: 6.6
+#| fig-height: 2.7
+top8 <- d |>
+  filter(!str_detect(causa, "^Complicaciones del embarazo")) |>
+  count(causa, sort=TRUE) |>
+  slice_head(n=8) |>
+  pull(causa)
+
+por_causa <- d |>
+  filter(causa %in% top8) |>
+  summarise(
+    mediana=median(edad),
+    .by=c(causa, sexo)) |>
+  pivot_wider(names_from=sexo, values_from=mediana) |>
+  mutate(
+    brecha=Mujer-Hombre,
+    causa=fct_reorder(causa, brecha))
+
+ggplot(por_causa, aes(y=causa)) +
+  geom_segment(aes(x=Hombre, xend=Mujer, yend=causa),
+               color="grey70", linewidth=1) +
+  geom_point(aes(x=Hombre, color="Hombre"), size=3) +
+  geom_point(aes(x=Mujer,  color="Mujer"),  size=3) +
+  scale_color_manual(values=c(Hombre=azul.hombre, Mujer=naranja.mujer)) +
+  labs(x="Edad mediana al morir (años)", y=NULL, color=NULL) +
+  theme_minimal(base_size=11)
+```
+
+Según la figura 2, la brecha más grande se presenta en las causas externas (accidentes y violencia), donde la edad mediana es de 39 años en los hombres y de 60 en las mujeres, lo que genera una brecha de 21 años. En la categoría de tumores ocurre lo contrario, pues los hombres presentaron una edad mediana ligeramente mayor que las mujeres. Esto muestra que las diferencias entre ambos sexos varían según la causa de defunción.
+
+```{r}
+#| label: fig-brecha
+#| fig-cap: "Brecha en edad mediana al morir (mujeres - hombres)"
+#| fig-width: 6.6
+#| fig-height: 2.3
+res <- d |>
+  summarise(
+    mediana=median(edad),
+    .by=c(ano, sexo))
+
+res |>
+  pivot_wider(names_from=sexo, values_from=mediana) |>
+  mutate(brecha=Mujer-Hombre) |>
+  ggplot(aes(ano, brecha))+
+  geom_line(linewidth=1, color=azul.hombre)+
+  geom_point(color=azul.hombre)+
+  expand_limits(y=0)+
+  labs(x="Año", y="Brecha (años)")+
+  theme_minimal(base_size=11)
+```
+
+La figura 3 describe la evolución de la diferencia en la edad mediana de defunción. Las mujeres presentaron una edad mediana mayor que los hombres durante todo el período, y esta aumentó en ambos sexos: pasó de 68 a 71 años en los hombres y de 74 a 78 años en las mujeres. La brecha fue de 6 años en 2005 y de 7 años en 2024, pero no aumentó de forma constante, ya que alcanzó los 8 años en 2015 y volvió a 6 años en 2020.
+
+## Regresión lineal
+
+```{r}
+#| label: modelo
+#Primero calculo cuántos años hay entre 2024 y 2005
+DT <- 2024-2005
+#Creo ano0=años transcurridos desde 2005, entonces el punto de partida es el 2005
+dm <- d |>
+  mutate(ano0=ano-2005)
+#Me ayudo de la función lm() de R para hacer la regresión lineal
+m1 <- lm(edad~sexo*ano0, data=dm)
+#Guardo los cuatro números del modelo, con estos cuatro ya se pueden montar las 2 rectas
+b0 <- coef(m1)[["(Intercept)"]]#Punto de partida de los hombres
+b1 <- coef(m1)[["sexoMujer"]]#Brecha en 2005
+b2 <- coef(m1)[["ano0"]]#Ritmo anual de los hombres
+b3 <- coef(m1)[["sexoMujer:ano0"]]#Cambio anual de la brecha
+#Me ayudo de la función confint() para obtener sus intervalos de confianza (95% por defecto)
+ic1 <- confint(m1)
+#Dos funciones auxiliares que se usan varias veces
+#La primera escribe un rango como texto:
+rango.texto <- function(ic, k=1){
+  #sprintf() presenta los números con dos decimales separados de "a"
+  sprintf("%.2f a %.2f", ic[1]*k, ic[2]*k)
+}
+#La segunda evalúa según un intervalo
+concluir <- function(ic, si_baja, si_sube, sin_evidencia) {
+  if (ic[2]<0){
+    si_baja
+  } else if (ic[1]>0){
+    si_sube
+  } else {
+    sin_evidencia
+  }
+}
+```
+
+```{r}
+#| label: fig-regresion
+#| fig-cap: "Edad promedio al morir: datos reales (puntos) y rectas del modelo (líneas)"
+#| fig-width: 6.6
+#| fig-height: 2.8
+#Primero calculo los puntos: el promedio por cada año y sexo
+promedios <- dm |>
+  summarise(
+    edad_media=mean(edad),
+    .by=c(ano, sexo))
+#Las rectas que es lo que predijo el modelo
+#Con expand_grid() genero las combinaciones entre todos los años y los sexos
+ajuste <- expand_grid(
+  ano=2005:2024,
+  sexo=levels(dm$sexo)) |>
+  mutate(
+    sexo=factor(sexo, levels=levels(dm$sexo)), ano0=ano-2005)
+#Ahora con predict() toma esos coeficientes y calcula qué edad promedio al morir predice el modelo para cada año y sexo
+ajuste$prediccion <- predict(m1, newdata=ajuste)
+#Ahora lo grafico
+ggplot()+
+  geom_point(data=promedios, aes(ano, edad_media, color=sexo))+
+  geom_line(data=ajuste, aes(ano, prediccion, color=sexo), linewidth=1)+
+  scale_color_manual(values=c(Hombre=azul.hombre, Mujer=naranja.mujer))+
+  labs(x="Año", y="Edad promedio al morir (años)", color=NULL)+
+  theme_minimal(base_size=11)
+```
+
+```{r}
+#| label: funcion-brecha
+tabla.brecha <- function(m) {
+#con coef() extraigo los coeficientes de la regresion y con confint() calculo sus intervalos de confianza
+  b  <- coef(m)
+  ic <- confint(m)
+  ic_2005  <- ic["sexoMujer", ]
+  ic_anual <- ic["sexoMujer:ano0", ]
+  # Conclusión según la regla del 0
+  veredicto <- concluir(ic_anual, "La brecha se redujo", "La brecha aumentó", "No hay evidencia de que la brecha cambiara")
+  tibble(
+    Medida = c(
+      "Brecha en 2005",
+      "Cambio de la brecha por año",
+      "Cambio de la brecha en 19 años (2005 a 2024)"),
+    "Valor (en años)"=unname(
+      c(b["sexoMujer"],
+      b["sexoMujer:ano0"],
+      DT*b["sexoMujer:ano0"])),
+    "Rango probable"=c(
+      rango.texto(ic_2005),
+      rango.texto(ic_anual),
+      rango.texto(ic_anual, DT)),
+    Conclusión=c("", veredicto, veredicto)
+  )
+}
+
+#Hago lo mismo pero filtrando que la edad sea mayor o igual a 1
+m2 <- lm(edad~sexo*ano0, data=filter(dm, edad >= 1))
+```
+
+La regresión estima una edad promedio de defunción de 61.18 años para los hombres en 2005 y una brecha de 6.05 años, es decir, las mujeres tenían una edad promedio de defunción aproximadamente 6.05 años mayor. Además, la edad promedio de los hombres aumentó alrededor de 0.28 años por cada año transcurrido, mientras que la brecha aumentó aproximadamente 0.03 años anuales (Figura 4). La Tabla 1 resume la brecha estimada, su cambio anual y su cambio acumulado entre 2005 y 2024 para el modelo principal y para el análisis de sensibilidad.
+
+```{r}
+#| label: tbl-regresion
+#| tbl-cap: "Brecha estimada y cambio de la brecha según la regresión lineal"
+t1 <- tabla.brecha(m1)
+t2 <- tabla.brecha(m2)
+
+#Presentación compacta: se omite la columna de conclusión, que se interpreta en el texto
+bind_rows(t1, t2) |>
+  mutate(
+    Modelo=c("Principal", "", "", "Sin menores de un año", "", ""),
+    Medida=c("Brecha en 2005", "Cambio anual de la brecha", "Cambio acumulado 2005-2024")[
+      match(Medida, t1$Medida)]) |>
+  select(Modelo, Medida, `Valor (en años)`, `Intervalo de confianza (95 %)`=`Rango probable`) |>
+  generadora.tablas(nota="Brecha = mujeres menos hombres, en años. Edad promedio estimada por regresión lineal.") |>
+  format_tt(j=3, digits=2, num_fmt="decimal") |>
+  style_tt(j=3, align="r")
+```
+
+En el modelo principal, la brecha estimada en 2005 fue de 6.05 años y, según el modelo, aumentó aproximadamente 0.6 años entre 2005 y 2024. Aunque este incremento es pequeño, su intervalo de confianza del 95% va de 0.16 a 1.05 años y no incluye el cero, por lo que el modelo proporciona evidencia estadística de un ligero aumento de la brecha en la edad promedio de defunción.
+
+Al excluir las defunciones de menores de un año, la brecha estimada para 2005 aumenta a 6.55 años. Sin embargo, el cambio acumulado entre 2005 y 2024 se reduce a aproximadamente 0.28 años, con un intervalo de confianza del 95% de -0.12 a 0.68 años. Como este intervalo incluye el cero, no hay evidencia estadística suficiente para afirmar que la brecha haya cambiado durante el período de estudio, lo que indica que la conclusión del modelo principal es sensible a la inclusión de las defunciones infantiles.
+
+# Conclusiones
+
+Los resultados muestran que las mujeres presentaron una edad de defunción mayor que los hombres durante todo el período 2005-2024, con una brecha en la edad mediana de 6 años en 2005 y de 7 años en 2024. La regresión lineal estima una brecha de 6.05 años en 2005 y un aumento acumulado de aproximadamente 0.60 años hasta 2024, cuyo intervalo de confianza no incluye el cero. Sin embargo, al excluir las defunciones de menores de un año, este aumento deja de ser estadísticamente distinguible de cero. Por lo tanto, la brecha persiste, pero no existe evidencia suficientemente sólida de que haya aumentado.
+
+Estos resultados deben interpretarse con cuidado ya que la base contiene únicamente defunciones y no la población expuesta al riesgo, por lo que no se calculan tasas de mortalidad. Además, el modelo trata cada defunción como una observación independiente, lo que podría producir intervalos de confianza más estrechos de lo que corresponde. También el período incluye la pandemia de COVID-19, cuyo efecto no se analizó de manera separada.
+
+# Referencias {.unnumbered}
+
+Instituto Nacional de Estadística y Censos. (s. f.-a). *Catálogo de microdatos* \[Sitio web\]. <https://sistemas.inec.cr/nada5.4/index.php/catalog/?page=1&sort_by=year&sort_order=desc&ps=15>
+
+Instituto Nacional de Estadística y Censos. (s. f.-b). *Defunciones 2005-2024* \[Conjunto de datos no publicado, proporcionado directamente por la institución\].
+
+Pennsylvania State University. (s. f.). 2. SLR model evaluation. STAT 501: Regression Methods. <https://online.stat.psu.edu/stat501/Lesson02>
+
+R Core Team. (2026a). confint: Confidence intervals for model parameters. R Documentation. <https://stat.ethz.ch/R-manual/R-devel/library/stats/html/confint.html>
+
+R Core Team. (2026b). lm: Fitting linear models. R Documentation. <https://search.r-project.org/R/refmans/stats/html/lm.html>
+
+R Core Team. (2026c). predict.lm: Predict method for linear model fits. R Documentation. <https://search.r-project.org/R/refmans/stats/html/predict.lm.html>
+
+Wickham, H. (2016). *ggplot2: Elegant graphics for data analysis*. Springer-Verlag. <https://ggplot2.tidyverse.org>
+
+
