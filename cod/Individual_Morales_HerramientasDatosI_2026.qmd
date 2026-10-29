@@ -186,6 +186,7 @@ La figura 1 muestra que entre los 20 y los 65 años se registraron más defuncio
 #| fig-cap: "Edad mediana al morir por sexo y causa, 2005-2024"
 #| fig-width: 6.6
 #| fig-height: 2.7
+
 top8 <- d |>
   filter(!str_detect(causa, "^Complicaciones del embarazo")) |>
   count(causa, sort=TRUE) |>
@@ -196,19 +197,50 @@ por_causa <- d |>
   filter(causa %in% top8) |>
   summarise(
     mediana=median(edad),
-    .by=c(causa, sexo)) |>
+    .by=c(causa, sexo)
+  ) |>
   pivot_wider(names_from=sexo, values_from=mediana) |>
   mutate(
     brecha=Mujer-Hombre,
-    causa=fct_reorder(causa, brecha))
+    causa=case_when(
+      str_detect(causa, "^Causas externas") ~ "Causas externas",
+      str_detect(causa, "sistema digestivo") ~ "Sistema digestivo",
+      str_detect(causa, "infecciosas") ~ "Enfermedades infecciosas",
+      str_detect(causa, "sistema circulatorio") ~ "Sistema circulatorio",
+      str_detect(causa, "endocrinas") ~ "Enfermedades endocrinas",
+      str_detect(causa, "sistema respiratorio") ~ "Sistema respiratorio",
+      str_detect(causa, "sistema genitourinario") ~ "Sistema genitourinario",
+      str_detect(causa, "Tumores") ~ "Tumores",
+      TRUE ~ causa
+    ),
+    causa=fct_reorder(causa, brecha)
+  )
 
 ggplot(por_causa, aes(y=causa)) +
-  geom_segment(aes(x=Hombre, xend=Mujer, yend=causa),
-               color="grey70", linewidth=1) +
-  geom_point(aes(x=Hombre, color="Hombre"), size=3) +
-  geom_point(aes(x=Mujer,  color="Mujer"),  size=3) +
-  scale_color_manual(values=c(Hombre=azul.hombre, Mujer=naranja.mujer)) +
-  labs(x="Edad mediana al morir (años)", y=NULL, color=NULL) +
+  geom_segment(
+    aes(x=Hombre, xend=Mujer, yend=causa),
+    color="grey70",
+    linewidth=1
+  ) +
+  geom_point(
+    aes(x=Hombre, color="Hombre"),
+    size=3
+  ) +
+  geom_point(
+    aes(x=Mujer, color="Mujer"),
+    size=3
+  ) +
+  scale_color_manual(
+    values=c(
+      Hombre=azul.hombre,
+      Mujer=naranja.mujer
+    )
+  ) +
+  labs(
+    x="Edad mediana al morir (años)",
+    y=NULL,
+    color=NULL
+  ) +
   theme_minimal(base_size=11)
 ```
 
@@ -363,13 +395,12 @@ Los resultados muestran que las mujeres presentaron una edad de defunción mayor
 
 Estos resultados deben interpretarse con cuidado ya que la base contiene únicamente defunciones y no la población expuesta al riesgo, por lo que no se calculan tasas de mortalidad. Además, el modelo trata cada defunción como una observación independiente, lo que podría producir intervalos de confianza más estrechos de lo que corresponde. También el período incluye la pandemia de COVID-19, cuyo efecto no se analizó de manera separada.
 
+\newpage
+
 # Referencias {.unnumbered}
 ```{=typst}
 #set par(hanging-indent: 1.27cm)
 ```
-
-
-Instituto Nacional de Estadística y Censos. (s. f.-a). *Catálogo de microdatos* \[Sitio web\]. <https://sistemas.inec.cr/nada5.4/index.php/catalog/?page=1&sort_by=year&sort_order=desc&ps=15>
 
 Instituto Nacional de Estadística y Censos. (s. f.-b). *Defunciones 2005-2024* \[Conjunto de datos no publicado, proporcionado directamente por la institución\].
 
