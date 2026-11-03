@@ -39,3 +39,8 @@ También se realiza un análisis de sensibilidad excluyendo las defunciones de m
 6. Consultar el reporte final en `res/IndividualNano.pdf`.
 
 La base de datos se encuentra en `data/` y se utiliza una ruta relativa para acceder a ella. Cuando se genere una nueva versión del PDF, se debe copiar desde `cod/` hacia `res/`.
+
+## Presentación del proyecto
+
+La presentación de la investigación se encuentra disponible en formato PDF en la carpeta res/.
+
