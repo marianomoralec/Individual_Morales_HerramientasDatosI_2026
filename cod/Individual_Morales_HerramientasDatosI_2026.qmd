@@ -150,9 +150,9 @@ El archivo contiene 444731 registros. Con base en la documentación metodológic
 
 Para comparar las edades de defunción por sexo se utiliza estadística descriptiva. Se calcula la edad mediana por sexo y año, y la brecha como la diferencia entre ambas medianas. Además, se construye una pirámide de defunciones por grupo de edad y sexo para los períodos 2005-2009 y 2020-2024, y se compara la edad mediana de hombres y mujeres dentro de las ocho causas de defunción más frecuentes, excluyendo embarazo y parto. La mediana divide las edades ordenadas en dos mitades y es menos sensible a valores extremos que el promedio. Los gráficos se elaboraron con ggplot2 (Wickham *et al.*, 2016).
 
-El análisis principal es una regresión lineal de la edad promedio de defunción con interacción entre el sexo y los años transcurridos desde 2005, ajustada con la función lm() (R Core Team, 2026b). El modelo usa una recta para cada sexo, donde la edad promedio es igual al punto de partida más el ritmo de cambio por año multiplicado por los años desde 2005. Sus cuatro coeficientes son: el punto de partida de los hombres, la brecha en 2005, el ritmo anual de los hombres y el cambio anual de la brecha. Si este último es positivo, la brecha crece, y si es 0, la brecha no cambia. El cambio acumulado entre 2005 y 2024 se calcula multiplicando el cambio anual por los 19 años del período, y las rectas estimadas se obtienen con predict() (R Core Team, 2026c) y se comparan con los promedios observados.
+El análisis principal es una regresión lineal de la edad de defunción con interacción entre sexo y años transcurridos desde 2005, ajustada con lm() (R Core Team, 2026b). El modelo utiliza una recta para cada sexo y sus cuatro coeficientes representan el punto de partida de los hombres, la brecha en 2005, el cambio anual de los hombres y el cambio anual de la brecha. Si este último es positivo, la brecha aumenta. El cambio acumulado se obtiene multiplicándolo por los 19 años del período. Para evaluar la bondad de ajuste se utilizan el coeficiente de determinación (R²), que mide la proporción de variabilidad explicada (Pennsylvania State University, s. f.-a), y la raíz del error cuadrático medio (RMSE), que cuantifica la magnitud de los errores de estimación en años (Chai y Draxler, 2014). Las rectas estimadas se obtienen con predict() (R Core Team, 2026c) y se comparan con los promedios observados.
 
-Los coeficientes son estimaciones, por lo que se acompañan de intervalos de confianza del 95 %, calculados con confint() (R Core Team, 2026a). Si un intervalo incluye el cero, no hay evidencia estadística suficiente para asegurar que existe un cambio o una diferencia real (Pennsylvania State University, s. f.). Como las defunciones a edades tempranas, en especial las de bebés, pueden reducir considerablemente el promedio, el modelo se repite excluyendo a los menores de un año para evaluar la sensibilidad del resultado. Es importante distinguir que los análisis descriptivos utilizan la edad mediana, mientras que la regresión estima la edad promedio, por lo que sus valores no son directamente comparables.
+Los coeficientes son estimaciones, por lo que se acompañan de intervalos de confianza del 95 %, calculados con confint() (R Core Team, 2026a). Si un intervalo incluye el cero, no hay evidencia estadística suficiente para asegurar que existe un cambio o una diferencia real (Pennsylvania State University, s. f.-b). Como las defunciones a edades tempranas, en especial las de bebés, pueden reducir considerablemente el promedio, el modelo se repite excluyendo a los menores de un año para evaluar la sensibilidad del resultado. Es importante distinguir que los análisis descriptivos utilizan la edad mediana, mientras que la regresión estima la edad promedio, por lo que sus valores no son directamente comparables.
 
 # Resultados
 
@@ -273,6 +273,7 @@ La figura 3 describe la evolución de la diferencia en la edad mediana de defunc
 
 ```{r}
 #| label: modelo
+#| output: false
 #Primero calculo cuántos años hay entre 2024 y 2005
 DT <- 2024-2005
 #Creo ano0=años transcurridos desde 2005, entonces el punto de partida es el 2005
@@ -280,6 +281,13 @@ dm <- d |>
   mutate(ano0=ano-2005)
 #Me ayudo de la función lm() de R para hacer la regresión lineal
 m1 <- lm(edad~sexo*ano0, data=dm)
+
+#Calculo las medidas de bondad de ajuste
+r2 <- summary(m1)$r.squared
+rmse <- sqrt(mean(residuals(m1)^2))
+#Muestro los resultados
+cat("R2:", round(r2, 4), "\n")
+cat("RMSE:", round(rmse, 2), "años\n")
 #Guardo los cuatro números del modelo, con estos cuatro ya se pueden montar las 2 rectas
 b0 <- coef(m1)[["(Intercept)"]]#Punto de partida de los hombres
 b1 <- coef(m1)[["sexoMujer"]]#Brecha en 2005
@@ -364,7 +372,7 @@ tabla.brecha <- function(m) {
 m2 <- lm(edad~sexo*ano0, data=filter(dm, edad >= 1))
 ```
 
-La regresión estima una edad promedio de defunción de 61.18 años para los hombres en 2005 y una brecha de 6.05 años, es decir, las mujeres tenían una edad promedio de defunción aproximadamente 6.05 años mayor. Además, la edad promedio de los hombres aumentó alrededor de 0.28 años por cada año transcurrido, mientras que la brecha aumentó aproximadamente 0.03 años anuales (Figura 4). La Tabla 1 resume la brecha estimada, su cambio anual y su cambio acumulado entre 2005 y 2024 para el modelo principal y para el análisis de sensibilidad.
+La regresión estima una edad promedio de defunción de 61.18 años para los hombres en 2005 y una brecha de 6.05 años a favor de las mujeres. Además, la edad promedio de los hombres aumentó aproximadamente 0.28 años anuales, mientras que la brecha aumentó 0.03 años por año (Figura 4). El modelo presentó un R² de 0.0248 y un RMSE de 22.54 años, por lo que explica aproximadamente el 2.48% de la variabilidad individual en la edad de defunción, mientras que el RMSE refleja la magnitud de los errores de estimación. La Tabla 1 resume las estimaciones de la brecha y el análisis de sensibilidad. Aunque la capacidad explicativa individual es baja, el modelo permite estimar la tendencia de la brecha promedio entre sexos durante el período estudiado.
 
 ```{r}
 #| label: tbl-regresion
@@ -402,9 +410,14 @@ Estos resultados deben interpretarse con cuidado ya que la base contiene únicam
 #set par(hanging-indent: 1.27cm)
 ```
 
+Chai, T., & Draxler, R. R. (2014). Root mean square error (RMSE) or mean absolute error (MAE)? – Arguments against avoiding RMSE in the literature. *Geoscientific Model Development, 7*(3), 1247–1250. <https://gmd.copernicus.org/articles/7/1247/2014/>
+
 Instituto Nacional de Estadística y Censos. (s. f.-b). *Defunciones 2005-2024* \[Conjunto de datos no publicado, proporcionado directamente por la institución\].
 
-Pennsylvania State University. (s. f.). STAT 501: *Regression Methods.* PennState Elberly College of Science. / <https://online.stat.psu.edu/stat501/Lesson02>
+Pennsylvania State University. (s. f.-a). *Lesson 1: Simple linear regression.* STAT 501: Regression Methods. <https://online.stat.psu.edu/stat501/Lesson01>
+
+Pennsylvania State University. (s. f.-b). STAT 501: *Regression Methods.* PennState Eberly College of Science.  <https://online.stat.psu.edu/stat501/Lesson02>
+
 
 R Core Team. (2026a). *confint: Confidence intervals for model parameters*.* R Documentation. <https://stat.ethz.ch/R-manual/R-devel/library/stats/html/confint.html>
 
@@ -414,3 +427,12 @@ R Core Team. (2026c). *predict.lm: Predict method for linear model fits.* R Docu
 
 Wickham, H., Chang, W., Henry, L., Lin Pendersen, T., Takahashi, K., Wilke, C., Woo, C., Yutani, H. y Dunnington, D. (2016). *ggplot2.* Copyright (s.f.) por Posit Solutions. <https://ggplot2.tidyverse.org>
 
+# Anexos {.unnumbered}
+```{=typst}
+#set par(hanging-indent: 0cm)
+```
+
+Link del repositorio del proyecto en Github: 
+<https://github.com/marianomoralec/Individual_Morales_HerramientasDatosI_2026>
+
+Link presentación (También se puede encontrar en el repositorio de Github, en la carpeta de res/ (resultados)): <https://docs.google.com/presentation/d/1-uo2OoWIu32vSLofKEPYVvtOa4RgieU-9rcWpLc5v20/edit?usp=sharing> 
